@@ -2,6 +2,248 @@
 
 #include "drsr.h"
 
+SecPkgContext_SessionKey kull_m_rpc_drsr_g_sKey = { 0, NULL };
+void RPC_ENTRY RpcSecurityCallback(void* Context)
+{
+	RPC_STATUS rpcStatus;
+	SECURITY_STATUS secStatus;
+	PCtxtHandle data = NULL;
+
+	rpcStatus = I_RpcBindingInqSecurityContext(Context, (LPVOID*)&data);
+	if (rpcStatus == RPC_S_OK)
+	{
+		if (kull_m_rpc_drsr_g_sKey.SessionKey)
+		{
+			FreeContextBuffer(kull_m_rpc_drsr_g_sKey.SessionKey);
+			kull_m_rpc_drsr_g_sKey.SessionKeyLength = 0;
+			kull_m_rpc_drsr_g_sKey.SessionKey = NULL;
+		}
+		secStatus = QueryContextAttributes(data, SECPKG_ATTR_SESSION_KEY, (LPVOID)&kull_m_rpc_drsr_g_sKey);
+		if (secStatus != SEC_E_OK)
+			PRINT_ERROR(L"QueryContextAttributes %08x\n", secStatus);
+	}
+	else PRINT_ERROR(L"I_RpcBindingInqSecurityContext %08x\n", rpcStatus);
+}
+
+static const MIDL_TYPE_PICKLING_INFO __MIDL_TypePicklingInfo = { 0x33205054, 0x3, 0, 0, 0, };
+void DRS_MSG_CRACKREPLY_V1_Free(handle_t _MidlEsHandle, DRS_MSG_CRACKREPLY_V1* _pType)
+{
+	NdrMesTypeFree2(_MidlEsHandle, (PMIDL_TYPE_PICKLING_INFO)&__MIDL_TypePicklingInfo, &drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_TypeFormatString.Format[702], _pType);
+}
+
+void DRS_MSG_DCINFOREPLY_V2_Free(handle_t _MidlEsHandle, DRS_MSG_DCINFOREPLY_V2* _pType)
+{
+	NdrMesTypeFree2(_MidlEsHandle, (PMIDL_TYPE_PICKLING_INFO)&__MIDL_TypePicklingInfo, &drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_TypeFormatString.Format[792], _pType);
+}
+
+void free_DRS_MSG_DCINFOREPLY_data(DWORD dcOutVersion, DRS_MSG_DCINFOREPLY* reply)
+{
+	if (reply)
+	{
+		switch (dcOutVersion)
+		{
+		case 2:
+			FreeDRS_MSG_DCINFOREPLY_V2(&reply->V2);
+			break;
+		default:
+			PRINT_ERROR(L"dcOutVersion not valid (0x%08x - %u)\n", dcOutVersion, dcOutVersion);
+			break;
+		}
+	}
+}
+
+void free_DRS_MSG_CRACKREPLY_data(DWORD nameCrackOutVersion, DRS_MSG_CRACKREPLY* reply)
+{
+	if (reply)
+	{
+		switch (nameCrackOutVersion)
+		{
+		case 1:
+			FreeDRS_MSG_CRACKREPLY_V1(&reply->V1);
+			break;
+		default:
+			PRINT_ERROR(L"nameCrackOutVersion not valid (0x%08x - %u)\n", nameCrackOutVersion, nameCrackOutVersion);
+			break;
+		}
+	}
+}
+
+const wchar_t* CrackNames_Error[] = { L"NO_ERROR", L"ERROR_RESOLVING", L"ERROR_NOT_FOUND", L"ERROR_NOT_UNIQUE", L"ERROR_NO_MAPPING", L"ERROR_DOMAIN_ONLY", L"ERROR_NO_SYNTACTICAL_MAPPING", L"ERROR_TRUST_REFERRAL" };
+BOOL CrackName(DRS_HANDLE hDrs, DS_NAME_FORMAT NameFormat, LPCWSTR Name, DS_NAME_FORMAT FormatWanted, LPWSTR* CrackedName, LPWSTR* CrackedDomain)
+{
+	BOOL status = FALSE;
+	DRS_MSG_CRACKREQ nameCrackReq = { 0 };
+	DWORD nameCrackOutVersion = 0, drsStatus;
+	DRS_MSG_CRACKREPLY nameCrackRep = { 0 };
+
+	nameCrackReq.V1.formatOffered = NameFormat;
+	nameCrackReq.V1.formatDesired = FormatWanted;
+	nameCrackReq.V1.cNames = 1;
+	nameCrackReq.V1.rpNames = (LPWSTR*)&Name;
+	RpcTryExcept
+	{
+		drsStatus = IDL_DRSCrackNames(hDrs, 1, &nameCrackReq, &nameCrackOutVersion, &nameCrackRep);
+		if (drsStatus == 0)
+		{
+			if (nameCrackOutVersion == 1)
+			{
+				if (nameCrackRep.V1.pResult->cItems == 1)
+				{
+					drsStatus = nameCrackRep.V1.pResult->rItems[0].status;
+					if (status = (drsStatus == DS_NAME_NO_ERROR))
+					{
+						string_copy(CrackedName, nameCrackRep.V1.pResult->rItems[0].pName);
+						string_copy(CrackedDomain, nameCrackRep.V1.pResult->rItems[0].pDomain);
+					}
+					else PRINT_ERROR(L"CrackNames (name status): 0x%08x (%u) - %s\n", drsStatus, drsStatus, (drsStatus < ARRAYSIZE(CrackNames_Error)) ? CrackNames_Error[drsStatus] : L"?");
+				}
+				else PRINT_ERROR(L"CrackNames: no item!\n");
+			}
+			else PRINT_ERROR(L"CrackNames: bad version (%u)\n", nameCrackOutVersion);
+			free_DRS_MSG_CRACKREPLY_data(nameCrackOutVersion, &nameCrackRep);
+		}
+		else PRINT_ERROR(L"CrackNames: 0x%08x (%u)\n", drsStatus, drsStatus);
+	}
+		RpcExcept(RPC_EXCEPTION)
+		PRINT_ERROR(L"RPC Exception 0x%08x (%u)\n", RpcExceptionCode(), RpcExceptionCode());
+	RpcEndExcept
+
+		return status;
+}
+
+GUID DRSUAPI_DS_BIND_GUID_Standard = { 0xe24d201a, 0x4fd6, 0x11d1, {0xa3, 0xda, 0x00, 0x00, 0xf8, 0x75, 0xae, 0x0d} };
+BOOL getDomainAndUserInfos(RPC_BINDING_HANDLE* hBinding, LPCWSTR ServerName, LPCWSTR Domain, GUID* DomainGUID, LPCWSTR User, LPCWSTR Guid, GUID* UserGuid, DRS_EXTENSIONS_INT* pDrsExtensionsInt)
+{
+	BOOL DomainGUIDfound = FALSE, ObjectGUIDfound = FALSE;
+	DWORD i;
+	ULONG drsStatus;
+	DRS_HANDLE hDrs = NULL;
+	DRS_MSG_DCINFOREQ dcInfoReq = { 0 };
+	DWORD dcOutVersion = 0;
+	DRS_MSG_DCINFOREPLY dcInfoRep = { 0 };
+	LPWSTR sGuid;
+	LPWSTR sSid;
+	LPWSTR sTempDomain;
+	PSID pSid;
+	UNICODE_STRING uGuid;
+
+	RtlZeroMemory(pDrsExtensionsInt, sizeof(DRS_EXTENSIONS_INT));
+	pDrsExtensionsInt->cb = sizeof(DRS_EXTENSIONS_INT) - sizeof(DWORD);
+	pDrsExtensionsInt->dwFlags = DRS_EXT_GETCHGREPLY_V6 | DRS_EXT_STRONG_ENCRYPTION;
+	if (getDCBind(hBinding, &DRSUAPI_DS_BIND_GUID_Standard, &hDrs, pDrsExtensionsInt))
+	{
+		RpcTryExcept
+		{
+			dcInfoReq.V1.InfoLevel = 2;
+			dcInfoReq.V1.Domain = (LPWSTR)Domain;
+			drsStatus = IDL_DRSDomainControllerInfo(hDrs, 1, &dcInfoReq, &dcOutVersion, &dcInfoRep);
+			if (drsStatus == 0)
+			{
+				if (dcOutVersion == 2)
+				{
+					for (i = 0; i < dcInfoRep.V2.cItems; i++)
+					{
+						if (!DomainGUIDfound && ((_wcsicmp(ServerName, dcInfoRep.V2.rItems[i].DnsHostName) == 0) || (_wcsicmp(ServerName, dcInfoRep.V2.rItems[i].NetbiosName) == 0)))
+						{
+							DomainGUIDfound = TRUE;
+							*DomainGUID = dcInfoRep.V2.rItems[i].NtdsDsaObjectGuid;
+						}
+					}
+					if (!DomainGUIDfound)
+						PRINT_ERROR(L"DomainControllerInfo: DC \'%s\' not found\n", ServerName);
+				}
+				else PRINT_ERROR(L"DomainControllerInfo: bad version (%u)\n", dcOutVersion);
+				free_DRS_MSG_DCINFOREPLY_data(dcOutVersion, &dcInfoRep);
+			}
+			else PRINT_ERROR(L"DomainControllerInfo: 0x%08x (%u)\n", drsStatus, drsStatus);
+
+			if (Guid)
+			{
+				RtlInitUnicodeString(&uGuid, Guid);
+				ObjectGUIDfound = NT_SUCCESS(RtlGUIDFromString(&uGuid, UserGuid));
+			}
+			else if (User)
+			{
+				if (CrackName(hDrs, wcschr(User, L'\\') ? DS_NT4_ACCOUNT_NAME : wcschr(User, L'=') ? DS_FQDN_1779_NAME : wcschr(User, L'@') ? DS_USER_PRINCIPAL_NAME : DS_NT4_ACCOUNT_NAME_SANS_DOMAIN, User, DS_UNIQUE_ID_NAME, &sGuid, NULL))
+				{
+					RtlInitUnicodeString(&uGuid, sGuid);
+					ObjectGUIDfound = NT_SUCCESS(RtlGUIDFromString(&uGuid, UserGuid));
+				}
+			}
+			else
+			{
+				if (getSidDomainFromName(Domain, &pSid, &sTempDomain, NULL, ServerName))
+				{
+					if (ConvertSidToStringSid(pSid, &sSid))
+					{
+						if (CrackName(hDrs, DS_SID_OR_SID_HISTORY_NAME, sSid,  DS_UNIQUE_ID_NAME, &sGuid, NULL))
+						{
+							RtlInitUnicodeString(&uGuid, sGuid);
+							ObjectGUIDfound = NT_SUCCESS(RtlGUIDFromString(&uGuid, UserGuid));
+						}
+						LocalFree(pSid);
+					}
+					LocalFree(sTempDomain);
+				}
+			}
+		}
+			RpcExcept(RPC_EXCEPTION)
+			PRINT_ERROR(L"RPC Exception 0x%08x (%u)\n", RpcExceptionCode(), RpcExceptionCode());
+		RpcEndExcept
+
+	}
+	return (DomainGUIDfound && (ObjectGUIDfound || !(Guid || User)));
+}
+
+BOOL getDCBind(RPC_BINDING_HANDLE* hBinding, GUID* NtdsDsaObjectGuid, DRS_HANDLE* hDrs, DRS_EXTENSIONS_INT* pDrsExtensionsInt)
+{
+	BOOL status = FALSE;
+	ULONG drsStatus;
+	DRS_EXTENSIONS_INT* pDrsExtensionsOutput = NULL;
+	RpcTryExcept
+	{
+		drsStatus = IDL_DRSBind(*hBinding, NtdsDsaObjectGuid, (DRS_EXTENSIONS*)pDrsExtensionsInt, (DRS_EXTENSIONS**)&pDrsExtensionsOutput, hDrs);
+		if (drsStatus == 0)
+		{
+			if (pDrsExtensionsOutput)
+			{
+				if (pDrsExtensionsOutput->cb >= FIELD_OFFSET(DRS_EXTENSIONS_INT, SiteObjGuid) - sizeof(DWORD))
+				{
+					if (pDrsExtensionsOutput->dwFlags & (DRS_EXT_GETCHGREQ_V8 | DRS_EXT_STRONG_ENCRYPTION))
+						status = TRUE;
+					else PRINT_ERROR(L"Incorrect DRS Extensions Output (%08x)\n", pDrsExtensionsOutput->dwFlags);
+
+					if (pDrsExtensionsOutput->cb >= FIELD_OFFSET(DRS_EXTENSIONS_INT, Pid) - sizeof(DWORD))
+					{
+						pDrsExtensionsInt->SiteObjGuid = pDrsExtensionsOutput->SiteObjGuid;
+						if (pDrsExtensionsOutput->cb >= FIELD_OFFSET(DRS_EXTENSIONS_INT, dwFlagsExt) - sizeof(DWORD))
+						{
+							pDrsExtensionsInt->dwReplEpoch = pDrsExtensionsOutput->dwReplEpoch;
+							if (pDrsExtensionsOutput->cb >= FIELD_OFFSET(DRS_EXTENSIONS_INT, ConfigObjGUID) - sizeof(DWORD))
+							{
+								pDrsExtensionsInt->dwExtCaps = MAXDWORD32;
+								if (pDrsExtensionsOutput->cb >= FIELD_OFFSET(DRS_EXTENSIONS_INT, dwExtCaps) - sizeof(DWORD))
+									pDrsExtensionsInt->ConfigObjGUID = pDrsExtensionsOutput->ConfigObjGUID;
+							}
+						}
+					}
+				}
+				else PRINT_ERROR(L"Incorrect DRS Extensions Output Size (%u)\n", pDrsExtensionsOutput->cb);
+				MIDL_user_free(pDrsExtensionsOutput);
+			}
+			else PRINT_ERROR(L"No DRS Extensions Output\n");
+
+			if (!status)
+				IDL_DRSUnbind(hDrs);
+		}
+		else PRINT_ERROR(L"IDL_DRSBind: %u\n", drsStatus);
+	}
+		RpcExcept(RPC_EXCEPTION)
+		PRINT_ERROR(L"RPC Exception 0x%08x (%u)\n", RpcExceptionCode(), RpcExceptionCode());
+	RpcEndExcept
+		return status;
+}
+
 typedef struct _ms2Ddrsr_MIDL_TYPE_FORMAT_STRING {
 	SHORT Pad;
 	UCHAR Format[1757];
@@ -106,7 +348,27 @@ static const ms2Ddrsr_MIDL_PROC_FORMAT_STRING ms2Ddrsr__MIDL_ProcFormatString = 
 
 static const MIDL_STUB_DESC drsuapi_c_StubDesc = { (void*)&drsuapi___RpcClientInterface, MIDL_user_allocate, MIDL_user_free, &drsuapi__MIDL_AutoBindHandle, 0, 0, 0, 0, ms2Ddrsr__MIDL_TypeFormatString.Format, 1, 0x60000, 0, 0x8000253, 0, 0, 0, 0x1, 0, 0, 0 };
 
+ULONG IDL_DRSBind(handle_t rpc_handle, UUID* puuidClientDsa, DRS_EXTENSIONS* pextClient, DRS_EXTENSIONS** ppextServer, DRS_HANDLE* phDrs)
+{
+	return (ULONG)NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[0], rpc_handle, puuidClientDsa, pextClient, ppextServer, phDrs).Simple;
+}
+
+ULONG IDL_DRSUnbind(DRS_HANDLE* phDrs)
+{
+	return (ULONG)NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[60], phDrs).Simple;
+}
+
 ULONG IDL_DRSGetNCChanges(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_GETCHGREQ* pmsgIn, DWORD* pdwOutVersion, DRS_MSG_GETCHGREPLY* pmsgOut)
 {
     return (ULONG)NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[134], hDrs, dwInVersion, pmsgIn, pdwOutVersion, pmsgOut).Simple;
+}
+
+ULONG IDL_DRSCrackNames(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_CRACKREQ* pmsgIn, DWORD* pdwOutVersion, DRS_MSG_CRACKREPLY* pmsgOut)
+{
+	return NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[534], (unsigned char*)&hDrs).Simple;
+}
+
+ULONG IDL_DRSDomainControllerInfo(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_DCINFOREQ* pmsgIn, DWORD* pdwOutVersion, DRS_MSG_DCINFOREPLY* pmsgOut)
+{
+	return (ULONG)NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[716], hDrs, dwInVersion, pmsgIn, pdwOutVersion, pmsgOut).Simple;
 }

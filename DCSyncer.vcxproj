@@ -141,12 +141,14 @@
   <ItemGroup>
     <ClCompile Include="DCSyncer.c" />
     <ClCompile Include="drsr.c" />
-    <ClCompile Include="output.c" />
+    <ClCompile Include="helper.c" />
+    <ClCompile Include="rpc.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="drsr.h" />
     <ClInclude Include="globals.h" />
-    <ClInclude Include="output.h" />
+    <ClInclude Include="helper.h" />
+    <ClInclude Include="rpc.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
