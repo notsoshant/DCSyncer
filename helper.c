@@ -2,6 +2,26 @@
 
 #include "helper.h"
 
+ASN1encoding_t ASN1enc = NULL;
+
+BOOL DotVal2Eoid(__in const ASN1char_t* dotOID, __out OssEncodedOID* encodedOID)
+{
+	BOOL status = FALSE;
+	if (ASN1enc && dotOID && encodedOID)
+	{
+		encodedOID->length = 0;
+		encodedOID->value = NULL;
+		status = ASN1BERDotVal2Eoid(ASN1enc, dotOID, encodedOID);
+	}
+	return status;
+}
+
+void freeEnc(void* pBuf)
+{
+	if (ASN1enc && pBuf)
+		ASN1_FreeEncoded(ASN1enc, pBuf);
+}
+
 void print_msg(PCWCHAR format, ...)
 {
 	va_list args;

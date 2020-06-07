@@ -2,6 +2,16 @@
 
 #include "rpc.h"
 
+void __RPC_FAR* __RPC_USER midl_user_allocate(size_t cBytes)
+{
+	return LocalAlloc(LPTR, cBytes);
+}
+
+void __RPC_USER midl_user_free(void __RPC_FAR* p)
+{
+	LocalFree(p);
+}
+
 void __RPC_USER ReadFcn(void* State, char** pBuffer, unsigned int* pSize)
 {
 	*pBuffer = (char*)((PRPC_FCNSTRUCT)State)->addr;
@@ -97,5 +107,13 @@ BOOL createBinding(LPCWSTR uuid, LPCWSTR ProtSeq, LPCWSTR NetworkAddr, LPCWSTR E
 		RpcStringFree(&StringBinding);
 	}
 	else PRINT_ERROR(L"RpcStringBindingCompose: 0x%08x (%u)\n", rpcStatus, rpcStatus);
+	return status;
+}
+
+BOOL deleteBinding(RPC_BINDING_HANDLE* hBinding)
+{
+	BOOL status = FALSE;
+	if (status = (RpcBindingFree(hBinding) == RPC_S_OK))
+		*hBinding = NULL;
 	return status;
 }

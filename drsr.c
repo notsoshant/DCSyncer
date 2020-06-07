@@ -2,6 +2,13 @@
 
 #include "drsr.h"
 
+extern const ms2Ddrsr_MIDL_TYPE_FORMAT_STRING ms2Ddrsr__MIDL_TypeFormatString;
+extern const ms2Ddrsr_MIDL_PROC_FORMAT_STRING ms2Ddrsr__MIDL_ProcFormatString;
+
+static RPC_BINDING_HANDLE drsuapi__MIDL_AutoBindHandle;
+static const RPC_CLIENT_INTERFACE drsuapi___RpcClientInterface = { sizeof(RPC_CLIENT_INTERFACE), {{0xe3514235, 0x4b06, 0x11d1, {0xab, 0x04, 0x00, 0xc0, 0x4f, 0xc2, 0xdc, 0xd2}}, {4, 0}}, {{0x8a885d04, 0x1ceb, 0x11c9, {0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60}}, {2, 0}}, 0, 0, 0, 0, 0, 0x00000000 };
+static const MIDL_STUB_DESC drsuapi_c_StubDesc = { (void*)&drsuapi___RpcClientInterface, MIDL_user_allocate, MIDL_user_free, &drsuapi__MIDL_AutoBindHandle, 0, 0, 0, 0, ms2Ddrsr__MIDL_TypeFormatString.Format, 1, 0x60000, 0, 0x8000253, 0, 0, 0, 0x1, 0, 0, 0 };
+
 SecPkgContext_SessionKey kull_m_rpc_drsr_g_sKey = { 0, NULL };
 void RPC_ENTRY RpcSecurityCallback(void* Context)
 {
@@ -28,7 +35,7 @@ void RPC_ENTRY RpcSecurityCallback(void* Context)
 static const MIDL_TYPE_PICKLING_INFO __MIDL_TypePicklingInfo = { 0x33205054, 0x3, 0, 0, 0, };
 void DRS_MSG_CRACKREPLY_V1_Free(handle_t _MidlEsHandle, DRS_MSG_CRACKREPLY_V1* _pType)
 {
-	NdrMesTypeFree2(_MidlEsHandle, (PMIDL_TYPE_PICKLING_INFO)&__MIDL_TypePicklingInfo, &drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_TypeFormatString.Format[702], _pType);
+	NdrMesTypeFree2(_MidlEsHandle, (PMIDL_TYPE_PICKLING_INFO)&__MIDL_TypePicklingInfo, &drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_TypeFormatString.Format[682], _pType);
 }
 
 void DRS_MSG_DCINFOREPLY_V2_Free(handle_t _MidlEsHandle, DRS_MSG_DCINFOREPLY_V2* _pType)
@@ -64,6 +71,42 @@ void free_DRS_MSG_CRACKREPLY_data(DWORD nameCrackOutVersion, DRS_MSG_CRACKREPLY*
 		default:
 			PRINT_ERROR(L"nameCrackOutVersion not valid (0x%08x - %u)\n", nameCrackOutVersion, nameCrackOutVersion);
 			break;
+		}
+	}
+}
+
+void DRS_MSG_GETCHGREPLY_V6_Free(handle_t _MidlEsHandle, DRS_MSG_GETCHGREPLY_V6* _pType)
+{
+	NdrMesTypeFree2(_MidlEsHandle, (PMIDL_TYPE_PICKLING_INFO)&__MIDL_TypePicklingInfo, &drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_TypeFormatString.Format[560], _pType);
+}
+
+void free_DRS_MSG_GETCHGREPLY_data(DWORD dwOutVersion, DRS_MSG_GETCHGREPLY* reply)
+{
+	if (reply)
+	{
+		switch (dwOutVersion)
+		{
+		case 6:
+			FreeDRS_MSG_GETCHGREPLY_V6(&reply->V6);
+			break;
+		default:
+			PRINT_ERROR(L"dwOutVersion not valid (0x%08x - %u)\n", dwOutVersion, dwOutVersion);
+			break;
+		}
+	}
+}
+
+void free_SCHEMA_PREFIX_TABLE_data(SCHEMA_PREFIX_TABLE* prefixTable)
+{
+	DWORD i;
+	if (prefixTable)
+	{
+		if (prefixTable->pPrefixEntry)
+		{
+			for (i = 0; i < prefixTable->PrefixCount; i++)
+				if (prefixTable->pPrefixEntry[i].prefix.elements)
+					MIDL_user_free(prefixTable->pPrefixEntry[i].prefix.elements);
+			MIDL_user_free(prefixTable->pPrefixEntry);
 		}
 	}
 }
@@ -244,20 +287,6 @@ BOOL getDCBind(RPC_BINDING_HANDLE* hBinding, GUID* NtdsDsaObjectGuid, DRS_HANDLE
 		return status;
 }
 
-typedef struct _ms2Ddrsr_MIDL_TYPE_FORMAT_STRING {
-	SHORT Pad;
-	UCHAR Format[1757];
-} ms2Ddrsr_MIDL_TYPE_FORMAT_STRING;
-
-typedef struct _ms2Ddrsr_MIDL_PROC_FORMAT_STRING {
-	SHORT Pad;
-	UCHAR Format[853];
-} ms2Ddrsr_MIDL_PROC_FORMAT_STRING;
-
-static const RPC_CLIENT_INTERFACE drsuapi___RpcClientInterface = { sizeof(RPC_CLIENT_INTERFACE), {{0xe3514235, 0x4b06, 0x11d1, {0xab, 0x04, 0x00, 0xc0, 0x4f, 0xc2, 0xdc, 0xd2}}, {4, 0}}, {{0x8a885d04, 0x1ceb, 0x11c9, {0x9f, 0xe8, 0x08, 0x00, 0x2b, 0x10, 0x48, 0x60}}, {2, 0}}, 0, 0, 0, 0, 0, 0x00000000 };
-
-static RPC_BINDING_HANDLE drsuapi__MIDL_AutoBindHandle;
-
 static const ms2Ddrsr_MIDL_TYPE_FORMAT_STRING ms2Ddrsr__MIDL_TypeFormatString = { 0, {
 	0x00, 0x00, 0x1d, 0x00, 0x08, 0x00, 0x01, 0x5b, 0x15, 0x03, 0x10, 0x00, 0x08, 0x06, 0x06, 0x4c, 0x00, 0xf1, 0xff, 0x5b, 0x15, 0x07, 0x18, 0x00, 0x0b, 0x0b, 0x0b, 0x5b, 0xb7, 0x08, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0xb7, 0x08, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x1b, 0x00, 0x01, 0x00, 0x19, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x5b, 0x1a, 0x03, 0x10, 0x00,
@@ -346,7 +375,74 @@ static const ms2Ddrsr_MIDL_PROC_FORMAT_STRING ms2Ddrsr__MIDL_ProcFormatString = 
 	0x8c, 0x06, 0x50, 0x21, 0x18, 0x00, 0x08, 0x00, 0x13, 0xa1, 0x20, 0x00, 0xc6, 0x06, 0x70, 0x00, 0x28, 0x00, 0x08, 0x00, 0x00,
 } };
 
-static const MIDL_STUB_DESC drsuapi_c_StubDesc = { (void*)&drsuapi___RpcClientInterface, MIDL_user_allocate, MIDL_user_free, &drsuapi__MIDL_AutoBindHandle, 0, 0, 0, 0, ms2Ddrsr__MIDL_TypeFormatString.Format, 1, 0x60000, 0, 0x8000253, 0, 0, 0, 0x1, 0, 0, 0 };
+DWORD MakeAttid_addPrefixToTable(SCHEMA_PREFIX_TABLE* prefixTable, OssEncodedOID* oidPrefix, DWORD* ndx, BOOL toAdd)
+{
+	BOOL status = FALSE;
+	DWORD i;
+	PrefixTableEntry* entries;
+
+	for (i = 0; i < prefixTable->PrefixCount; i++)
+	{
+		if (prefixTable->pPrefixEntry[i].prefix.length == oidPrefix->length)
+		{
+			if (RtlEqualMemory(prefixTable->pPrefixEntry[i].prefix.elements, oidPrefix->value, oidPrefix->length))
+			{
+				status = TRUE;
+				*ndx = prefixTable->pPrefixEntry[i].ndx;
+				break;
+			}
+		}
+	}
+	if (!status && toAdd)
+	{
+		*ndx = prefixTable->PrefixCount;
+		if (entries = (PrefixTableEntry*)MIDL_user_allocate(sizeof(PrefixTableEntry) * ((*ndx) + 1)))
+		{
+			RtlCopyMemory(entries, prefixTable->pPrefixEntry, sizeof(PrefixTableEntry) * (*ndx));
+			entries[*ndx].ndx = *ndx;
+			entries[*ndx].prefix.length = oidPrefix->length;
+			if (entries[*ndx].prefix.elements = (PBYTE)MIDL_user_allocate(oidPrefix->length))
+			{
+				RtlCopyMemory(entries[*ndx].prefix.elements, oidPrefix->value, oidPrefix->length);
+				if (prefixTable->pPrefixEntry)
+					MIDL_user_free(prefixTable->pPrefixEntry);
+				prefixTable->pPrefixEntry = entries;
+				prefixTable->PrefixCount++;
+				status = TRUE;
+			}
+		}
+	}
+	return status;
+}
+
+BOOL MakeAttid(SCHEMA_PREFIX_TABLE* prefixTable, LPCSTR szOid, ATTRTYP* att, BOOL toAdd)
+{
+	BOOL status = FALSE;
+	DWORD lastValue, ndx;
+	PSTR lastValueString;
+	OssEncodedOID oidPrefix;
+
+	if (lastValueString = strrchr(szOid, '.'))
+	{
+		if (*(lastValueString + 1))
+		{
+			lastValueString++;
+			lastValue = strtoul(lastValueString, NULL, 0);
+			*att = (WORD)lastValue % 0x4000;
+			if (*att >= 0x4000)
+				*att += 0x8000;
+			if (DotVal2Eoid(szOid, &oidPrefix))
+			{
+				oidPrefix.length -= (lastValue < 0x80) ? 1 : 2;
+				if (status = MakeAttid_addPrefixToTable(prefixTable, &oidPrefix, &ndx, toAdd))
+					*att |= ndx << 16;
+				else PRINT_ERROR(L"Error in MakeAttid_addPrefixToTable\n");
+				freeEnc(oidPrefix.value);
+			}
+		}
+	}
+	return status;
+}
 
 ULONG IDL_DRSBind(handle_t rpc_handle, UUID* puuidClientDsa, DRS_EXTENSIONS* pextClient, DRS_EXTENSIONS** ppextServer, DRS_HANDLE* phDrs)
 {

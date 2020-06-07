@@ -20,6 +20,10 @@ typedef struct RPC_FCNSTRUCT {
 	size_t size;
 } RPC_FCNSTRUCT, * PRPC_FCNSTRUCT;
 
+void __RPC_FAR* __RPC_USER midl_user_allocate(size_t cBytes);
+void __RPC_USER midl_user_free(void __RPC_FAR* p);
+
 void Generic_Free(PVOID data, PGENERIC_RPC_FREE fFree);
 
 BOOL createBinding(LPCWSTR uuid, LPCWSTR ProtSeq, LPCWSTR NetworkAddr, LPCWSTR Endpoint, LPCWSTR Service, BOOL addServiceToNetworkAddr, DWORD AuthnSvc, RPC_AUTH_IDENTITY_HANDLE hAuth, DWORD ImpersonationType, RPC_BINDING_HANDLE* hBinding, void (RPC_ENTRY* RpcSecurityCallback)(void*));
+BOOL deleteBinding(RPC_BINDING_HANDLE* hBinding);

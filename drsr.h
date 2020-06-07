@@ -3,13 +3,59 @@
 #include "globals.h"
 #include "rpc.h"
 
+#define DRS_WRIT_REP								0x00000010
+#define DRS_INIT_SYNC								0x00000020
+#define DRS_FULL_SYNC_NOW							0x00008000
+#define DRS_SYNC_URGENT								0x00080000
+#define DRS_NEVER_SYNCED							0x00200000
+
 #define DRS_EXT_GETCHGREPLY_V6						0x04000000
 #define DRS_EXT_STRONG_ENCRYPTION					0x00008000
 #define DRS_EXT_GETCHGREQ_V8						0x01000000
 
-void DRS_MSG_CRACKREPLY_V1_Free(handle_t _MidlEsHandle, DRS_MSG_CRACKREPLY_V1* _pType);
-void DRS_MSG_DCINFOREPLY_V2_Free(handle_t _MidlEsHandle, DRS_MSG_DCINFOREPLY_V2* _pType);
+#define szOID_objectclass					"2.5.4.0"
+#define szOID_hasMasterNCs					"1.2.840.113556.1.2.14"
+#define szOID_dMDLocation					"1.2.840.113556.1.2.36"
+#define szOID_isDeleted						"1.2.840.113556.1.2.48"
+#define szOID_invocationId					"1.2.840.113556.1.2.115"
 
+#define szOID_ANSI_name						"1.2.840.113556.1.4.1"
+#define szOID_objectGUID					"1.2.840.113556.1.4.2"
+
+#define szOID_ANSI_sAMAccountName			"1.2.840.113556.1.4.221"
+#define szOID_ANSI_userPrincipalName		"1.2.840.113556.1.4.656"
+#define szOID_ANSI_servicePrincipalName		"1.2.840.113556.1.4.771"
+#define szOID_ANSI_sAMAccountType			"1.2.840.113556.1.4.302"
+#define szOID_ANSI_userAccountControl		"1.2.840.113556.1.4.8"
+#define szOID_ANSI_accountExpires			"1.2.840.113556.1.4.159"
+#define szOID_ANSI_pwdLastSet				"1.2.840.113556.1.4.96"
+#define szOID_ANSI_objectSid				"1.2.840.113556.1.4.146"
+#define szOID_ANSI_sIDHistory				"1.2.840.113556.1.4.609"
+#define szOID_ANSI_unicodePwd				"1.2.840.113556.1.4.90"
+#define szOID_ANSI_ntPwdHistory				"1.2.840.113556.1.4.94"
+#define szOID_ANSI_dBCSPwd					"1.2.840.113556.1.4.55"
+#define szOID_ANSI_lmPwdHistory				"1.2.840.113556.1.4.160"
+#define szOID_ANSI_supplementalCredentials	"1.2.840.113556.1.4.125"
+
+#define szOID_ANSI_trustPartner				"1.2.840.113556.1.4.133"
+#define szOID_ANSI_trustAuthIncoming		"1.2.840.113556.1.4.129"
+#define szOID_ANSI_trustAuthOutgoing		"1.2.840.113556.1.4.135"
+
+#define szOID_ANSI_currentValue				"1.2.840.113556.1.4.27"
+
+#define szOID_options						"1.2.840.113556.1.4.307"
+#define szOID_systemFlags					"1.2.840.113556.1.4.375"
+#define szOID_ldapServer_show_deleted		"1.2.840.113556.1.4.417"
+#define szOID_serverReference				"1.2.840.113556.1.4.515"
+#define szOID_msDS_Behavior_Version			"1.2.840.113556.1.4.1459"
+#define szOID_msDS_ReplicationEpoch			"1.2.840.113556.1.4.1720"
+#define szOID_msDS_HasDomainNCs				"1.2.840.113556.1.4.1820"
+#define szOID_msDS_hasMasterNCs				"1.2.840.113556.1.4.1836"
+#define szOID_isRecycled					"1.2.840.113556.1.4.2058"
+
+#define szOID_ANSI_nTDSDSA					"1.2.840.113556.1.5.7000.47"
+
+#define FreeDRS_MSG_GETCHGREPLY_V6(pObject) Generic_Free(pObject, (PGENERIC_RPC_FREE) DRS_MSG_GETCHGREPLY_V6_Free)
 #define FreeDRS_MSG_CRACKREPLY_V1(pObject) Generic_Free(pObject, (PGENERIC_RPC_FREE) DRS_MSG_CRACKREPLY_V1_Free)
 #define FreeDRS_MSG_DCINFOREPLY_V2(pObject) Generic_Free(pObject, (PGENERIC_RPC_FREE) DRS_MSG_DCINFOREPLY_V2_Free)
 
@@ -17,6 +63,16 @@ typedef LONGLONG DSTIME;
 typedef LONGLONG USN;
 typedef ULONG ATTRTYP;
 typedef void* DRS_HANDLE;
+
+typedef struct _ms2Ddrsr_MIDL_TYPE_FORMAT_STRING {
+	SHORT Pad;
+	UCHAR Format[1757];
+} ms2Ddrsr_MIDL_TYPE_FORMAT_STRING;
+
+typedef struct _ms2Ddrsr_MIDL_PROC_FORMAT_STRING {
+	SHORT Pad;
+	UCHAR Format[853];
+} ms2Ddrsr_MIDL_PROC_FORMAT_STRING;
 
 typedef enum {
 	DS_UNKNOWN_NAME = 0,
@@ -60,6 +116,16 @@ typedef enum {
 	DS_NAME_ERROR_NO_SYNTACTICAL_MAPPING = 6,
 	DS_NAME_ERROR_TRUST_REFERRAL = 7
 } DS_NAME_ERROR;
+
+typedef enum {
+	EXOP_FSMO_REQ_ROLE = 1,
+	EXOP_FSMO_REQ_RID_ALLOC = 2,
+	EXOP_FSMO_RID_REQ_ROLE = 3,
+	EXOP_FSMO_REQ_PDC = 4,
+	EXOP_FSMO_ABANDON_ROLE = 5,
+	EXOP_REPL_OBJ = 6,
+	EXOP_REPL_SECRETS = 7
+} EXOP_REQ;
 
 typedef struct _NT4SID {
 	UCHAR Data[28];
@@ -316,11 +382,21 @@ typedef union _DRS_MSG_CRACKREPLY {
 	DRS_MSG_CRACKREPLY_V1 V1;
 } DRS_MSG_CRACKREPLY;
 
+void DRS_MSG_CRACKREPLY_V1_Free(handle_t _MidlEsHandle, DRS_MSG_CRACKREPLY_V1* _pType);
+void DRS_MSG_DCINFOREPLY_V2_Free(handle_t _MidlEsHandle, DRS_MSG_DCINFOREPLY_V2* _pType);
+
+void free_DRS_MSG_DCINFOREPLY_data(DWORD dcOutVersion, DRS_MSG_DCINFOREPLY* reply);
+void free_DRS_MSG_CRACKREPLY_data(DWORD nameCrackOutVersion, DRS_MSG_CRACKREPLY* reply);
+void free_DRS_MSG_GETCHGREPLY_data(DWORD dwOutVersion, DRS_MSG_GETCHGREPLY* reply);
+void free_SCHEMA_PREFIX_TABLE_data(SCHEMA_PREFIX_TABLE* prefixTable);
+
 void RPC_ENTRY RpcSecurityCallback(void* Context);
 
 BOOL getDomainAndUserInfos(RPC_BINDING_HANDLE* hBinding, LPCWSTR ServerName, LPCWSTR Domain, GUID* DomainGUID, LPCWSTR User, LPCWSTR Guid, GUID* UserGuid, DRS_EXTENSIONS_INT* pDrsExtensionsInt);
 BOOL getDCBind(RPC_BINDING_HANDLE* hBinding, GUID* NtdsDsaObjectGuid, DRS_HANDLE* hDrs, DRS_EXTENSIONS_INT* pDrsExtensionsInt);
 BOOL CrackName(DRS_HANDLE hDrs, DS_NAME_FORMAT NameFormat, LPCWSTR Name, DS_NAME_FORMAT FormatWanted, LPWSTR* CrackedName, LPWSTR* CrackedDomain);
+
+BOOL MakeAttid(SCHEMA_PREFIX_TABLE* prefixTable, LPCSTR szOid, ATTRTYP* att, BOOL toAdd);
 
 ULONG IDL_DRSBind(handle_t rpc_handle, UUID* puuidClientDsa, DRS_EXTENSIONS* pextClient, DRS_EXTENSIONS** ppextServer, DRS_HANDLE* phDrs);
 ULONG IDL_DRSUnbind(DRS_HANDLE* phDrs);

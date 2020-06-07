@@ -13,6 +13,15 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="globals">
+      <UniqueIdentifier>{5b8dbd36-d672-4586-9bdc-c940835dee23}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="globals\inc">
+      <UniqueIdentifier>{6fe91c5f-6b0d-452a-a3cd-95c70f6ae36b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="globals\lib">
+      <UniqueIdentifier>{1401be28-5329-4a52-a475-cd09b99352fb}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="DCSyncer.c">
@@ -41,5 +50,13 @@
     <ClInclude Include="helper.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="inc\msasn1.h">
+      <Filter>globals\inc</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Library Include="lib\msasn1.min.lib">
+      <Filter>globals\lib</Filter>
+    </Library>
   </ItemGroup>
 </Project>
