@@ -287,6 +287,99 @@ BOOL getDCBind(RPC_BINDING_HANDLE* hBinding, GUID* NtdsDsaObjectGuid, DRS_HANDLE
 		return status;
 }
 
+LPCSTR encrypted_oids[] = {
+	szOID_ANSI_unicodePwd, szOID_ANSI_ntPwdHistory, szOID_ANSI_dBCSPwd, szOID_ANSI_lmPwdHistory, szOID_ANSI_supplementalCredentials,
+	szOID_ANSI_trustAuthIncoming, szOID_ANSI_trustAuthOutgoing,
+	szOID_ANSI_currentValue,
+};
+BOOL ProcessGetNCChangesReply(SCHEMA_PREFIX_TABLE* prefixTable, REPLENTINFLIST* objects)
+{
+	ATTRTYP attSensitive[ARRAYSIZE(encrypted_oids)];
+	REPLENTINFLIST* pReplentinflist, * pNextReplentinflist = objects;
+	DWORD i, j, k;
+
+	for (i = 0; i < ARRAYSIZE(attSensitive); i++)
+	{
+		if (!MakeAttid(prefixTable, encrypted_oids[i], &attSensitive[i], FALSE))
+		{
+			PRINT_ERROR(L"Unable to MakeAttid for %S\n", encrypted_oids[i]);
+			return FALSE;
+		}
+	}
+
+	while (pReplentinflist = pNextReplentinflist)
+	{
+		pNextReplentinflist = pReplentinflist->pNextEntInf;
+		if (pReplentinflist->Entinf.AttrBlock.pAttr)
+		{
+			for (i = 0; i < pReplentinflist->Entinf.AttrBlock.attrCount; i++)
+			{
+				for (j = 0; j < ARRAYSIZE(attSensitive); j++)
+				{
+					if (attSensitive[j] == pReplentinflist->Entinf.AttrBlock.pAttr[i].attrTyp)
+					{
+						if (pReplentinflist->Entinf.AttrBlock.pAttr[i].AttrVal.pAVal)
+							for (k = 0; k < pReplentinflist->Entinf.AttrBlock.pAttr[i].AttrVal.valCount; k++)
+								if (pReplentinflist->Entinf.AttrBlock.pAttr[i].AttrVal.pAVal[k].pVal)
+									if (!ProcessGetNCChangesReply_decrypt(&pReplentinflist->Entinf.AttrBlock.pAttr[i].AttrVal.pAVal[k], NULL))
+										return FALSE;
+						break;
+					}
+				}
+			}
+		}
+	}
+	return TRUE;
+}
+
+BOOL ProcessGetNCChangesReply_decrypt(ATTRVAL* val, SecPkgContext_SessionKey* SessionKey)
+{
+	BOOL status = FALSE;
+	PSecPkgContext_SessionKey pKey = SessionKey ? SessionKey : &kull_m_rpc_drsr_g_sKey;
+	PENCRYPTED_PAYLOAD encrypted = (PENCRYPTED_PAYLOAD)val->pVal;
+	MD5_CTX md5ctx;
+	CRYPTO_BUFFER cryptoKey = { MD5_DIGEST_LENGTH, MD5_DIGEST_LENGTH, md5ctx.digest }, cryptoData;
+	DWORD realLen, calcChecksum;
+	PVOID toFree;
+
+	if (pKey->SessionKey && pKey->SessionKeyLength)
+	{
+		if ((val->valLen >= (ULONG)FIELD_OFFSET(ENCRYPTED_PAYLOAD, EncryptedData)) && val->pVal)
+		{
+			MD5Init(&md5ctx);
+			MD5Update(&md5ctx, pKey->SessionKey, pKey->SessionKeyLength);
+			MD5Update(&md5ctx, encrypted->Salt, sizeof(encrypted->Salt));
+			MD5Final(&md5ctx);
+			cryptoData.Length = cryptoData.MaximumLength = val->valLen - FIELD_OFFSET(ENCRYPTED_PAYLOAD, CheckSum);
+			cryptoData.Buffer = (PBYTE)&encrypted->CheckSum;
+			if (NT_SUCCESS(RtlEncryptDecryptRC4(&cryptoData, &cryptoKey)))
+			{
+				realLen = val->valLen - FIELD_OFFSET(ENCRYPTED_PAYLOAD, EncryptedData);
+				if (crypto_hash(CALG_CRC32, encrypted->EncryptedData, realLen, &calcChecksum, sizeof(calcChecksum)))
+				{
+					if (calcChecksum == encrypted->CheckSum)
+					{
+						toFree = val->pVal;
+						if (val->pVal = (UCHAR*)MIDL_user_allocate(realLen))
+						{
+							RtlCopyMemory(val->pVal, encrypted->EncryptedData, realLen);
+							val->valLen = realLen;
+							status = TRUE;
+							MIDL_user_free(toFree);
+						}
+					}
+					else PRINT_ERROR(L"Checksums don\'t match (C:0x%08x - R:0x%08x)\n", calcChecksum, encrypted->CheckSum);
+				}
+				else PRINT_ERROR(L"Unable to calculate CRC32\n");
+			}
+			else PRINT_ERROR(L"RtlEncryptDecryptRC4\n");
+		}
+		else PRINT_ERROR(L"No valid data\n");
+	}
+	else PRINT_ERROR(L"No Session Key\n");
+	return status;
+}
+
 static const ms2Ddrsr_MIDL_TYPE_FORMAT_STRING ms2Ddrsr__MIDL_TypeFormatString = { 0, {
 	0x00, 0x00, 0x1d, 0x00, 0x08, 0x00, 0x01, 0x5b, 0x15, 0x03, 0x10, 0x00, 0x08, 0x06, 0x06, 0x4c, 0x00, 0xf1, 0xff, 0x5b, 0x15, 0x07, 0x18, 0x00, 0x0b, 0x0b, 0x0b, 0x5b, 0xb7, 0x08, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00, 0x10, 0x00, 0xb7, 0x08, 0x00, 0x00, 0x00, 0x00, 0x10, 0x27, 0x00, 0x00, 0x1b, 0x00, 0x01, 0x00, 0x19, 0x00, 0x00, 0x00, 0x01, 0x00, 0x02, 0x5b, 0x1a, 0x03, 0x10, 0x00,
@@ -442,6 +535,60 @@ BOOL MakeAttid(SCHEMA_PREFIX_TABLE* prefixTable, LPCSTR szOid, ATTRTYP* att, BOO
 		}
 	}
 	return status;
+}
+
+ATTRVALBLOCK* findAttr(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid)
+{
+	ATTRVALBLOCK* ptr = NULL;
+	DWORD i;
+	ATTR* attribut;
+	ATTRTYP type;
+	if (MakeAttid(prefixTable, szOid, &type, FALSE))
+	{
+		for (i = 0; i < attributes->attrCount; i++)
+		{
+			attribut = &attributes->pAttr[i];
+			if (attribut->attrTyp == type)
+			{
+				ptr = &attribut->AttrVal;
+				break;
+			}
+		}
+	}
+	else PRINT_ERROR(L"Unable to get an ATTRTYP for %S\n", szOid);
+	return ptr;
+}
+
+PVOID findMonoAttr(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid, PVOID data, DWORD* size)
+{
+	PVOID ptr = NULL;
+	ATTRVALBLOCK* valblock;
+
+	if (data)
+		*(PVOID*)data = NULL;
+	if (size)
+		*size = 0;
+
+	if (valblock = findAttr(prefixTable, attributes, szOid))
+	{
+		if (valblock->valCount == 1)
+		{
+			ptr = valblock->pAVal[0].pVal;
+			if (data)
+				*(PVOID*)data = ptr;
+			if (size)
+				*size = valblock->pAVal[0].valLen;
+		}
+	}
+	return ptr;
+}
+
+void findPrintMonoAttr(LPCWSTR prefix, SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid, BOOL newLine)
+{
+	PVOID ptr;
+	DWORD sz;
+	if (findMonoAttr(prefixTable, attributes, szOid, &ptr, &sz))
+		PRINT_NORMAL(L"%s%.*s%s", prefix ? prefix : L"", sz / sizeof(wchar_t), (PWSTR)ptr, newLine ? L"\n" : L"");
 }
 
 ULONG IDL_DRSBind(handle_t rpc_handle, UUID* puuidClientDsa, DRS_EXTENSIONS* pextClient, DRS_EXTENSIONS** ppextServer, DRS_HANDLE* phDrs)

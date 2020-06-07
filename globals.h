@@ -12,8 +12,10 @@
 #include<Midles.h>
 #include<sddl.h>
 #include<msasn1.h>
+#include<string.h>
 
 #include "helper.h"
+#include "crypto.h"
 
 #if !defined(NT_SUCCESS)
 #define NT_SUCCESS(Status) ((NTSTATUS)(Status) >= 0)

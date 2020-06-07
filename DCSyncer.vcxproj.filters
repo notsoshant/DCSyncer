@@ -36,6 +36,9 @@
     <ClCompile Include="helper.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="crypto.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="globals.h">
@@ -52,6 +55,9 @@
     </ClInclude>
     <ClInclude Include="inc\msasn1.h">
       <Filter>globals\inc</Filter>
+    </ClInclude>
+    <ClInclude Include="crypto.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

