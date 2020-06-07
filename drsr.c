@@ -461,7 +461,7 @@ ULONG IDL_DRSGetNCChanges(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_GETCHGREQ*
 
 ULONG IDL_DRSCrackNames(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_CRACKREQ* pmsgIn, DWORD* pdwOutVersion, DRS_MSG_CRACKREPLY* pmsgOut)
 {
-	return NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[534], (unsigned char*)&hDrs).Simple;
+	return (ULONG)NdrClientCall2((PMIDL_STUB_DESC)&drsuapi_c_StubDesc, (PFORMAT_STRING)&ms2Ddrsr__MIDL_ProcFormatString.Format[558], hDrs, dwInVersion, pmsgIn, pdwOutVersion, pmsgOut).Simple;
 }
 
 ULONG IDL_DRSDomainControllerInfo(DRS_HANDLE hDrs, DWORD dwInVersion, DRS_MSG_DCINFOREQ* pmsgIn, DWORD* pdwOutVersion, DRS_MSG_DCINFOREPLY* pmsgOut)
