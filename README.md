@@ -7,3 +7,8 @@ Currently, this tool will dump hashes for all users, single user hash dump is no
 ## Usage
 
 Just download the tool from releases and run it. It doesn't require any command line arguments.
+
+## Write-up
+
+Full write-up on working of this tool is available here:  
+[https://notsoshant.github.io/tools/dcsyncer/](https://notsoshant.github.io/tools/dcsyncer/)
